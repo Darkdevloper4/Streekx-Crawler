@@ -1,30 +1,46 @@
 const { executeCrawl } = require('./streekx-engine-core');
+const { supabase } = require('./streekx-database-client');
 
-const SEED_URLS = ['https://news.google.com', 'https://www.wikipedia.org'];
-const MAX_DEPTH = 3; // Kitna gehra jana hai (Page -> Link -> Link)
-const visited = new Set();
+async function getNextUrlFromQueue() {
+    const { data, error } = await supabase
+        .from('streekx_crawl_queue')
+        .select('url')
+        .eq('is_crawled', false)
+        .limit(1)
+        .single();
+    
+    return data ? data.url : null;
+}
 
 async function startStreekxEngine() {
-    console.log("--- Streekx Independent Crawler Initialized ---");
+    console.log("--- Streekx Infinite Crawler Started ---");
     
-    let queue = SEED_URLS.map(url => ({ url, depth: 0 }));
+    while (true) {
+        let url = await getNextUrlFromQueue();
+        
+        if (!url) {
+            console.log("Queue khali hai. Seed URLs se refill kar raha hoon...");
+            // Agar queue khali ho toh default sites add karein
+            await supabase.from('streekx_crawl_queue').upsert([{ url: 'https://news.google.com' }]);
+            await new Promise(r => setTimeout(r, 5000));
+            continue;
+        }
 
-    while (queue.length > 0) {
-        const { url, depth } = queue.shift();
+        console.log(`Processing: ${url}`);
+        const newLinks = await executeCrawl(url, 1);
 
-        if (visited.has(url) || depth > MAX_DEPTH) continue;
-        visited.add(url);
+        // Naye links ko queue mein daalein
+        if (newLinks && newLinks.length > 0) {
+            const queueData = newLinks.slice(0, 15).map(link => ({ url: link, is_crawled: false }));
+            await supabase.from('streekx_crawl_queue').upsert(queueData, { onConflict: 'url' });
+        }
 
-        const newLinks = await executeCrawl(url, depth);
+        // URL ko 'crawled' mark karein
+        await supabase.from('streekx_crawl_queue').update({ is_crawled: true }).eq('url', url);
 
-        // Naye links ko queue mein add karein
-        const nextLinks = newLinks.map(link => ({ url: link, depth: depth + 1 }));
-        queue.push(...nextLinks.slice(0, 20)); // Limit per page to avoid memory overflow
-
-        // Respectful delay (Politeness)
+        // Google level politeness (Anti-blocking)
         await new Promise(r => setTimeout(r, 2000));
     }
 }
 
 startStreekxEngine();
-
