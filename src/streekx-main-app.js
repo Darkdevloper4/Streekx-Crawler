@@ -1,29 +1,21 @@
-const { executeCrawl } = require('./streekx-engine-core');
-const { supabase } = require('./streekx-database-client');
+// src/streekx-main-app.js ka ye hissa update karein
+const CONCURRENCY = 2; // Safe speed for stability
 
-const CONCURRENCY = 5; // Safe but fast parallel crawling
-
-async function startStreekxEngine() {
-    console.log("--- STREEKX POWER CRAWLER LIVE ---");
+// Jab queue khali ho, toh zyada diverse sites add karein
+if (!queue || queue.length === 0) {
+    console.log("Queue empty. Expanding search horizons...");
+    await supabase.from('streekx_crawl_queue').upsert([
+        { url: 'https://www.thehindu.com', is_crawled: false },
+        { url: 'https://www.ndtv.com', is_crawled: false },
+        { url: 'https://en.wikipedia.org/wiki/Special:Random', is_crawled: false },
+        { url: 'https://news.ycombinator.com', is_crawled: false }
+    ], { onConflict: 'url' });
     
-    while (true) {
-        // Fetch fresh URLs from queue
-        const { data: queue } = await supabase
-            .from('streekx_crawl_queue')
-            .select('url')
-            .eq('is_crawled', false)
-            .limit(CONCURRENCY);
+    // 10 second ka lamba wait taki naye links database mein stable ho jayein
+    await new Promise(r => setTimeout(r, 10000)); 
+    continue;
+}
 
-        if (!queue || queue.length === 0) {
-            console.log("Queue empty. Reseeding with Global News...");
-            await supabase.from('streekx_crawl_queue').upsert([
-                { url: 'https://www.bbc.com/news', is_crawled: false },
-                { url: 'https://www.reuters.com', is_crawled: false },
-                { url: 'https://news.google.com', is_crawled: false }
-            ], { onConflict: 'url' });
-            await new Promise(r => setTimeout(r, 5000));
-            continue;
-        }
 
         // Process URLs in Parallel
         await Promise.all(queue.map(async (item) => {
