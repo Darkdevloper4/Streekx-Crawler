@@ -9,19 +9,19 @@ async function executeCrawl(url, depth) {
 
     try {
         const response = await axios.get(url, {
-            headers: { 'User-Agent': 'StreekxBot/1.0' },
-            timeout: 15000
+            headers: { 'User-Agent': 'StreekxBot/1.0 (+https://streekx.com/bot)' },
+            timeout: 10000
         });
 
         const extracted = parsePage(response.data, url);
 
-        // DHAYAN SE: Table ka naam 'streekx_index' hona chahiye
-        const { error } = await supabase.from('streekx_index').upsert({
+        // Saving to the high-level Index table
+        await supabase.from('streekx_index').upsert({
             url: url,
             domain: new URL(url).hostname,
             title: extracted.title,
             meta_description: extracted.description,
-            raw_content: response.data.substring(0, 50000), 
+            raw_content: response.data.substring(0, 30000), 
             favicon: extracted.favicon,
             og_image: extracted.og_image,
             images: extracted.images,
@@ -30,13 +30,11 @@ async function executeCrawl(url, depth) {
             outlinks_count: extracted.links.length
         }, { onConflict: 'url' });
 
-        if (error) console.error("Database Save Error:", error.message);
-        
-        console.log(`[Success] Data Saved to Index: ${url}`);
+        console.log(`[Index Saved] ${url}`);
         return extracted.links;
 
     } catch (error) {
-        console.error(`[Failed] ${url}: ${error.message}`);
+        console.error(`[Skip] ${url}: ${error.message}`);
         return [];
     }
 }
