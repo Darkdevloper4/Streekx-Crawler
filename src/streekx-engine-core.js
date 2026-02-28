@@ -3,45 +3,37 @@ const { parsePage } = require('./streekx-multimedia-parser');
 const { supabase } = require('./streekx-database-client');
 
 /**
- * Ye function ek URL uthata hai, uska sara content/images nikalta hai 
- * aur use 'streekx_index' table mein 15+ columns ke saath save karta hai.
+ * Ye function data ko 'streekx_index' (Full Column Table) mein save karega.
  */
 async function executeCrawl(url) {
     try {
-        // 1. Website ka raw HTML fetch karna
         const response = await axios.get(url, {
-            headers: { 
-                'User-Agent': 'StreekxBot/1.0 (+https://streekx.com/bot)',
-                'Accept': 'text/html,application/xhtml+xml,xml;q=0.9'
-            },
-            timeout: 12000 // Thoda extra time badi sites ke liye
+            headers: { 'User-Agent': 'StreekxBot/1.0' },
+            timeout: 12000 
         });
 
-        // 2. Multimedia Parser se Title, Images, aur Videos nikalna
         const extracted = parsePage(response.data, url);
 
-        // 3. FULL DATA SAVING: Ye sabse zaroori part hai jo 'streekx_index' ko bharta hai
+        // SABSE ZAROORI PART: Ye 'streekx_index' ko target kar raha hai
         const { error } = await supabase.from('streekx_index').upsert({
             url: url,
             domain: new URL(url).hostname,
             title: extracted.title || "No Title",
             meta_description: extracted.description || "",
-            raw_content: response.data.substring(0, 40000), // Searchable text limit
+            raw_content: response.data.substring(0, 35000), 
             favicon: extracted.favicon || "",
             og_image: extracted.og_image || "",
-            images: extracted.images || [], // JSON format for gallery
-            videos: extracted.videos || [], // JSON format for video search
-            discovered_links: extracted.links || [],
-            outlinks_count: extracted.links ? extracted.links.length : 0 // Ranking power
+            images: extracted.images || [], 
+            videos: extracted.videos || [], 
+            outlinks_count: extracted.links ? extracted.links.length : 0 
         }, { onConflict: 'url' });
 
         if (error) {
-            console.error(`[DB Error] Failed to save ${url}:`, error.message);
+            console.error(`[DB Error] ${url}:`, error.message);
         } else {
-            console.log(`[Success] Full Index Saved: ${url}`);
+            console.log(`[Full Index Success] ${url}`);
         }
         
-        // Naye links return karna taki crawler aage badh sake
         return extracted.links || [];
 
     } catch (error) {
