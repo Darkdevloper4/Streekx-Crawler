@@ -1,7 +1,7 @@
 const { executeCrawl } = require('./streekx-engine-core');
 const { supabase } = require('./streekx-database-client');
 
-const CONCURRENCY = 3; // Safe but fast parallel crawling
+const CONCURRENCY = 5; // Safe but fast parallel crawling
 
 async function startStreekxEngine() {
     console.log("--- STREEKX POWER CRAWLER LIVE ---");
