@@ -1,99 +1,104 @@
 const express = require('express');
+const cors = require('cors'); // Replit se connect karne ke liye zaroori hai
 const { supabase } = require('./streekx-database-client');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ==========================================
+// 1. SECURITY & CONFIGURATION
+// ==========================================
+app.use(cors()); // Isse aapka frontend (Replit) is API se baat kar payega
 app.use(express.json());
 
-// 1. ALL SEARCH (Web Results + Multimedia Snippets)
-app.get('/api/search', async (req, res) => {
+// Ye aapki unique Professional API Key hai
+const STREEKX_API_KEY = "STX-PRO-2026-X99"; 
+
+// Middleware: Har request par key check karega
+const verifyApiKey = (req, res, next) => {
+    const userKey = req.headers['x-api-key'];
+    if (userKey === STREEKX_API_KEY) {
+        next();
+    } else {
+        res.status(401).json({ 
+            error: "Unauthorized", 
+            message: "Invalid or Missing Streekx API Key." 
+        });
+    }
+};
+
+// ==========================================
+// 2. SEARCH ENDPOINTS (With Ranking)
+// ==========================================
+
+// A. Web Search (All Results)
+app.get('/api/v1/search', verifyApiKey, async (req, res) => {
     const query = req.query.q;
-    if (!query) return res.status(400).json({ error: "Search query required" });
+    if (!query) return res.status(400).json({ error: "Query is required" });
 
     try {
-        console.log(`[Streekx Search] Query: ${query}`);
-
-        // Ranking Logic: Title match ko Content match se zyada priority deta hai
         const { data, error } = await supabase
             .from('streekx_index')
-            .select(`
-                url, title, meta_description, favicon, og_image, images, created_at
-            `)
-            .or(`title.ilike.%${query}%,meta_description.ilike.%${query}%,raw_content.ilike.%${query}%`)
-            .order('outlinks_count', { ascending: false }) // Authority ranking
+            .select('url, title, meta_description, favicon, og_image, outlinks_count')
+            .or(`title.ilike.%${query}%,meta_description.ilike.%${query}%`)
+            .order('outlinks_count', { ascending: false }) // Authority Ranking
             .limit(20);
 
         if (error) throw error;
-
-        res.json({
-            status: "success",
-            results: data.map(item => ({
-                title: item.title,
-                link: item.url,
-                description: item.meta_description || "No description available.",
-                favicon: item.favicon,
-                thumbnail: item.og_image || (item.images[0] ? item.images[0].url : null),
-                date: item.created_at
-            }))
-        });
+        res.json({ source: "Streekx Engine", results: data });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// 2. IMAGE SEARCH FILTER
-app.get('/api/images', async (req, res) => {
+// B. Image Search Filter
+app.get('/api/v1/images', verifyApiKey, async (req, res) => {
     const query = req.query.q;
     try {
         const { data, error } = await supabase
             .from('streekx_index')
             .select('images, url, title')
             .ilike('title', `%${query}%`)
-            .limit(40);
+            .limit(30);
 
         if (error) throw error;
-
-        // Extracting all images from JSONB
-        const allImages = data.flatMap(item => 
-            item.images.map(img => ({
-                image_url: img.url,
-                alt: img.alt || item.title,
-                source_link: item.url
-            }))
+        const formattedImages = data.flatMap(item => 
+            item.images.map(img => ({ url: img.url, alt: img.alt, origin: item.url }))
         );
-
-        res.json({ status: "success", images: allImages });
+        res.json({ type: "images", results: formattedImages });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// 3. VIDEO SEARCH FILTER
-app.get('/api/videos', async (req, res) => {
+// C. Video Search Filter
+app.get('/api/v1/videos', verifyApiKey, async (req, res) => {
     const query = req.query.q;
     try {
         const { data, error } = await supabase
             .from('streekx_index')
-            .select('videos, url, title, meta_description')
+            .select('videos, url, title')
             .ilike('title', `%${query}%`)
-            .limit(20);
+            .limit(15);
 
         if (error) throw error;
-
-        const allVideos = data.flatMap(item => 
-            item.videos.map(v => ({
-                video_url: v,
-                title: item.title,
-                source_link: item.url
-            }))
+        const formattedVideos = data.flatMap(item => 
+            item.videos.map(vid => ({ url: vid, title: item.title, origin: item.url }))
         );
-
-        res.json({ status: "success", videos: allVideos });
+        res.json({ type: "videos", results: formattedVideos });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
+// ==========================================
+// 3. SERVER START
+// ==========================================
 app.listen(PORT, () => {
-    console.log(`🚀 Streekx Search Engine API live at http://localhost:${PORT}`);
+    console.log(`
+    🚀 STREEKX PROFESSIONAL API IS LIVE
+    ----------------------------------
+    Endpoint: http://localhost:${PORT}/api/v1/search
+    API Key:  ${STREEKX_API_KEY}
+    Mode:     High-Performance
+    `);
 });
