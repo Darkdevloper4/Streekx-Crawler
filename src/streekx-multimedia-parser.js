@@ -6,7 +6,7 @@ function parsePage(html, url) {
     const urlObj = new URL(url);
 
     const data = {
-        title: document.title || "",
+        title: document.title || "No Title",
         description: "",
         favicon: "",
         og_image: "",
@@ -16,12 +16,8 @@ function parsePage(html, url) {
         site_name: urlObj.hostname
     };
 
-    // 1. Favicon Extraction (Google jaisa icon dikhane ke liye)
-    const iconSelectors = [
-        'link[rel="icon"]',
-        'link[rel="shortcut icon"]',
-        'link[rel="apple-touch-icon"]'
-    ];
+    // 1. Favicon Extraction
+    const iconSelectors = ['link[rel="icon"]', 'link[rel="shortcut icon"]', 'link[rel="apple-touch-icon"]'];
     for (let selector of iconSelectors) {
         const icon = document.querySelector(selector);
         if (icon && icon.href) {
@@ -29,27 +25,22 @@ function parsePage(html, url) {
             break;
         }
     }
-    // Default fallback agar favicon na mile
     if (!data.favicon) data.favicon = `${urlObj.origin}/favicon.ico`;
 
-    // 2. OpenGraph & Meta Description (Rich Previews ke liye)
+    // 2. Metadata Extraction
     data.description = document.querySelector('meta[name="description"]')?.content || 
                        document.querySelector('meta[property="og:description"]')?.content || "";
-    
     data.og_image = document.querySelector('meta[property="og:image"]')?.content || "";
 
-    // 3. Image Extraction (with Alt text for Image Search)
+    // 3. Image Extraction
     document.querySelectorAll('img').forEach(img => {
         const src = img.src || img.dataset.src;
         if (src && src.startsWith('http')) {
-            data.images.push({
-                url: new URL(src, url).href,
-                alt: img.alt || data.title
-            });
+            data.images.push({ url: new URL(src, url).href, alt: img.alt || data.title });
         }
     });
 
-    // 4. Video & Media Extraction (YouTube/Vimeo/HTML5)
+    // 4. Video Extraction
     document.querySelectorAll('video, source, iframe').forEach(media => {
         const src = media.src || media.dataset.src;
         if (src && src.startsWith('http')) {
@@ -57,13 +48,14 @@ function parsePage(html, url) {
         }
     });
 
-    // 5. Recursive Link Extraction
+    // 5. CLEAN LINK EXTRACTION (Wikipedia Loop Fix)
     document.querySelectorAll('a').forEach(link => {
         try {
             if (link.href && link.href.startsWith('http')) {
-                data.links.push(link.href);
+                const cleanUrl = link.href.split('#')[0].split('?')[0]; // Removes fragments & queries
+                data.links.push(cleanUrl);
             }
-        } catch (e) { /* Invalid URL skip */ }
+        } catch (e) {}
     });
 
     return data;
